@@ -1,0 +1,152 @@
+name: mediflow
+
+x-api-environment: &api-environment
+  NODE_ENV: ${NODE_ENV:-development}
+  PORT: 4000
+  DATABASE_URL: postgresql://${POSTGRES_USER:-mediflow}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-mediflow}?schema=public
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+  JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+  CSRF_SECRET: ${CSRF_SECRET}
+  JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+  JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-7}
+  CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  COOKIE_SAME_SITE: ${COOKIE_SAME_SITE:-strict}
+  COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
+  TRUST_PROXY: ${TRUST_PROXY:-0}
+  RATE_LIMIT_TTL_MS: ${RATE_LIMIT_TTL_MS:-60000}
+  RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+  RATE_LIMIT_STORAGE: redis
+  METRICS_TOKEN: ${METRICS_TOKEN}
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+  REDIS_PASSWORD: ${REDIS_PASSWORD}
+  AUTOMATION_CONCURRENCY: ${AUTOMATION_CONCURRENCY:-10}
+  AUTOMATION_MAX_ATTEMPTS: ${AUTOMATION_MAX_ATTEMPTS:-5}
+  AUTOMATION_BACKOFF_MS: ${AUTOMATION_BACKOFF_MS:-5000}
+  AUTOMATION_DRY_RUN: ${AUTOMATION_DRY_RUN:-true}
+  N8N_BASE_URL: http://n8n:5678
+  N8N_WEBHOOK_SECRET: ${N8N_WEBHOOK_SECRET}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  EMAIL_FROM: ${EMAIL_FROM:-MediFlow AI <no-reply@mediflow.local>}
+  SMS_API_URL: ${SMS_API_URL:-}
+  SMS_API_TOKEN: ${SMS_API_TOKEN:-}
+  SMS_FROM: ${SMS_FROM:-MediFlow}
+  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+  OPENAI_MODEL: ${OPENAI_MODEL:-gpt-5.6-sol}
+  OPENAI_AUDIO_MODEL: ${OPENAI_AUDIO_MODEL:-gpt-4o-mini-transcribe}
+  AI_DEMO_MODE: ${AI_DEMO_MODE:-true}
+  AI_REQUEST_TIMEOUT_MS: ${AI_REQUEST_TIMEOUT_MS:-45000}
+  AI_MAX_INPUT_CHARS: ${AI_MAX_INPUT_CHARS:-20000}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mediflow}
+      POSTGRES_USER: ${POSTGRES_USER:-mediflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - mediflow_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-mediflow} -d ${POSTGRES_DB:-mediflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - mediflow_redis:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"${REDIS_PASSWORD}\" ping | grep PONG"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  migrate:
+    build:
+      context: ./server
+      target: production
+    command: ["npm", "run", "prisma:deploy"]
+    environment:
+      <<: *api-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ./server
+      target: production
+    restart: unless-stopped
+    environment:
+      <<: *api-environment
+    ports:
+      - "${API_PORT:-4000}:4000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/v1/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      target: production
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:4000/api/v1}
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  n8n:
+    image: n8nio/n8n:2.32.5
+    restart: unless-stopped
+    environment:
+      N8N_HOST: ${N8N_HOST:-localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-http}
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://localhost:5678/}
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+      GENERIC_TIMEZONE: ${TIMEZONE:-Asia/Dhaka}
+    ports:
+      - "${N8N_PORT:-5678}:5678"
+    volumes:
+      - mediflow_n8n:/home/node/.n8n
+    depends_on:
+      redis:
+        condition: service_healthy
+
+volumes:
+  mediflow_postgres:
+  mediflow_redis:
+  mediflow_n8n:

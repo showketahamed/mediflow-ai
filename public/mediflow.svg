@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="MediFlow">
+  <defs>
+    <linearGradient id="g" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#06101f"/>
+  <path d="M30 15h4v14h14v4H34v16h-4V33H16v-4h14V15Z" fill="url(#g)"/>
+  <circle cx="32" cy="31" r="23" fill="none" stroke="url(#g)" stroke-opacity=".35" stroke-width="2"/>
+</svg>

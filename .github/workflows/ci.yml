@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: mediflow_ci
+          POSTGRES_USER: mediflow
+          POSTGRES_PASSWORD: mediflow_ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mediflow -d mediflow_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://mediflow:mediflow_ci_password@localhost:5432/mediflow_ci?schema=public
+      VITE_API_URL: http://localhost:4000/api/v1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            server/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Install backend dependencies
+        run: npm ci --prefix server
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Apply migrations to CI database
+        run: npm run db:deploy
+
+      - name: Type-check frontend
+        run: npm run typecheck
+
+      - name: Type-check backend
+        run: npm run typecheck --prefix server
+
+      - name: Build frontend and backend
+        run: npm run build:all
+
+      - name: Validate migration state
+        run: npm run db:status

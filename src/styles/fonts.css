@@ -1,0 +1,11 @@
+@import '@fontsource-variable/plus-jakarta-sans';
+@import '@fontsource-variable/jetbrains-mono';
+
+body {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+}
+
+::-webkit-scrollbar {
+  width: 0px;
+  height: 0px;
+}

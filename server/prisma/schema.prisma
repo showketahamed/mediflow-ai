@@ -1,0 +1,606 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  HOSPITAL_ADMIN
+  DOCTOR
+  NURSE
+  RECEPTIONIST
+  LAB_TECHNICIAN
+  PHARMACIST
+  PATIENT
+}
+
+enum Gender {
+  FEMALE
+  MALE
+  NON_BINARY
+}
+
+enum PatientStatus {
+  CRITICAL
+  WARNING
+  STABLE
+}
+
+enum AppointmentStatus {
+  CONFIRMED
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum DiagnosticStatus {
+  IDLE
+  RUNNING
+  CANCELLED
+  COMPLETED
+}
+
+enum AutomationType {
+  APPOINTMENT
+  LAB
+  PHARMACY
+  BED_ALLOCATION
+  EMERGENCY
+  FOLLOW_UP
+  NOTIFICATION
+  N8N
+}
+
+enum AutomationStatus {
+  QUEUED
+  ACTIVE
+  RETRYING
+  COMPLETED
+  FAILED
+  DEAD_LETTER
+  CANCELLED
+}
+
+enum OutboxStatus {
+  PENDING
+  PROCESSING
+  PROCESSED
+  FAILED
+}
+
+enum LabOrderStatus {
+  ORDERED
+  SAMPLE_PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum PharmacyOrderStatus {
+  PENDING
+  VALIDATING
+  READY
+  DISPENSED
+  CANCELLED
+}
+
+enum BedStatus {
+  AVAILABLE
+  RESERVED
+  OCCUPIED
+  CLEANING
+  OUT_OF_SERVICE
+}
+
+enum EmergencyStatus {
+  OPEN
+  TRIAGED
+  RESPONDING
+  STABILIZED
+  CLOSED
+}
+
+enum FollowUpStatus {
+  SCHEDULED
+  SENT
+  COMPLETED
+  CANCELLED
+}
+
+enum AiFeature {
+  RECEPTIONIST
+  CHAT
+  PATIENT_SUMMARY
+  APPOINTMENT_ASSISTANT
+  DIAGNOSIS_SUGGESTION
+  MEDICAL_OCR
+  VOICE_NOTE
+  REPORT_SUMMARY
+  ANALYTICS
+  PREDICTION
+}
+
+enum AiInteractionStatus {
+  SUCCESS
+  FAILED
+  DEMO
+}
+
+enum AiMessageRole {
+  USER
+  ASSISTANT
+}
+
+model Hospital {
+  id           String         @id @default(uuid())
+  name         String
+  code         String         @unique
+  timezone     String         @default("Asia/Dhaka")
+  departments  Department[]
+  wards        Ward[]
+  users        User[]
+  patients     Patient[]
+  appointments Appointment[]
+  diagnostics  Diagnostic[]
+  automationRuns AutomationRun[]
+  outboxEvents AutomationOutbox[]
+  labOrders LabOrder[]
+  pharmacyOrders PharmacyOrder[]
+  beds Bed[]
+  emergencyCases EmergencyCase[]
+  followUps FollowUp[]
+  aiInteractions AiInteraction[]
+  aiConversations AiConversation[]
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+}
+
+model Department {
+  id         String    @id @default(uuid())
+  hospitalId String
+  name       String
+  code       String
+  hospital   Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  users      User[]
+  wards      Ward[]
+  @@unique([hospitalId, code])
+  @@index([hospitalId])
+}
+
+model Ward {
+  id           String      @id @default(uuid())
+  hospitalId   String
+  departmentId String?
+  name         String
+  code         String
+  hospital     Hospital    @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  department   Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  admissions   Admission[]
+  beds         Bed[]
+  @@unique([hospitalId, code])
+  @@index([hospitalId])
+}
+
+model User {
+  id             String         @id @default(uuid())
+  hospitalId     String?
+  departmentId   String?
+  email          String         @unique
+  passwordHash   String
+  name           String
+  title          String
+  role           UserRole
+  active         Boolean        @default(true)
+  emailVerified  Boolean        @default(false)
+  hospital       Hospital?      @relation(fields: [hospitalId], references: [id], onDelete: SetNull)
+  department     Department?    @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  doctorVisits   Appointment[]  @relation("AppointmentDoctor")
+  attendingAdmissions Admission[] @relation("AdmissionAttending")
+  diagnosticOrders Diagnostic[] @relation("DiagnosticOrder")
+  notifications  Notification[]
+  settings       UserSettings?
+  refreshTokens  RefreshToken[]
+  verificationTokens VerificationToken[]
+  auditLogs      AuditLog[]
+  aiInteractions AiInteraction[]
+  aiConversations AiConversation[]
+  patientProfile Patient?       @relation("PatientUser")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  @@index([hospitalId, role])
+}
+
+model Patient {
+  id           String       @id @default(uuid())
+  hospitalId   String
+  userId       String?      @unique
+  medicalId    String
+  name         String
+  dateOfBirth  DateTime
+  gender       Gender
+  phone        String?
+  email        String?
+  hospital     Hospital     @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+  user         User?        @relation("PatientUser", fields: [userId], references: [id], onDelete: SetNull)
+  admissions   Admission[]
+  appointments Appointment[]
+  diagnostics  Diagnostic[]
+  labOrders LabOrder[]
+  pharmacyOrders PharmacyOrder[]
+  emergencyCases EmergencyCase[]
+  followUps FollowUp[]
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  @@unique([hospitalId, medicalId])
+  @@index([hospitalId, name])
+}
+
+model Admission {
+  id            String        @id @default(uuid())
+  patientId     String
+  wardId        String?
+  attendingId   String?
+  condition     String
+  status        PatientStatus @default(STABLE)
+  admittedAt    DateTime
+  dischargedAt  DateTime?
+  notes         String        @default("")
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  ward          Ward?         @relation(fields: [wardId], references: [id], onDelete: SetNull)
+  attendingName String
+  attending     User?         @relation("AdmissionAttending", fields: [attendingId], references: [id], onDelete: SetNull)
+  vitals        VitalSign[]
+  bedAllocations BedAllocation[]
+  @@index([patientId, admittedAt])
+  @@index([wardId])
+}
+
+model VitalSign {
+  id            String    @id @default(uuid())
+  admissionId   String
+  systolic      Int?
+  diastolic     Int?
+  heartRate     Int?
+  temperatureC  Decimal?  @db.Decimal(4, 1)
+  oxygenPercent Int?
+  recordedAt    DateTime  @default(now())
+  admission     Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  @@index([admissionId, recordedAt])
+}
+
+model Appointment {
+  id          String            @id @default(uuid())
+  hospitalId  String
+  patientId   String?
+  doctorId    String?
+  displayCode String
+  patientName String
+  type        String
+  doctorName  String
+  room        String
+  startsAt    DateTime
+  endsAt      DateTime
+  status      AppointmentStatus @default(PENDING)
+  notes       String            @default("")
+  hospital    Hospital          @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient     Patient?          @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  doctor      User?             @relation("AppointmentDoctor", fields: [doctorId], references: [id], onDelete: SetNull)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  @@unique([hospitalId, displayCode])
+  @@index([hospitalId, startsAt])
+  @@index([doctorId, startsAt])
+}
+
+model Diagnostic {
+  id             String           @id @default(uuid())
+  hospitalId     String
+  patientId      String
+  orderedById    String?
+  displayCode    String
+  scanType       String
+  status         DiagnosticStatus @default(IDLE)
+  progress       Int              @default(0)
+  summary        String           @default("")
+  recommendation String           @default("")
+  startedAt      DateTime
+  completedAt    DateTime?
+  hospital       Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient        Patient          @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  orderedBy      User?            @relation("DiagnosticOrder", fields: [orderedById], references: [id], onDelete: SetNull)
+  findings       DiagnosticFinding[]
+  @@unique([hospitalId, displayCode])
+  @@index([patientId, startedAt])
+}
+
+model DiagnosticFinding {
+  id           String     @id @default(uuid())
+  diagnosticId String
+  description  String
+  sortOrder    Int        @default(0)
+  diagnostic   Diagnostic @relation(fields: [diagnosticId], references: [id], onDelete: Cascade)
+  @@index([diagnosticId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  body      String
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+  sourceKey String?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+  @@unique([userId, sourceKey])
+}
+
+model UserSettings {
+  id                   String  @id @default(uuid())
+  userId               String  @unique
+  theme                String  @default("dark")
+  notificationsEnabled Boolean @default(true)
+  language             String  @default("en")
+  reducedMotion        Boolean @default(false)
+  user                 User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  userAgent String?
+  ipAddress String?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, expiresAt])
+}
+
+model VerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  purpose   String
+  tokenHash String
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, purpose, expiresAt])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?
+  action     String
+  entity     String
+  entityId   String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+}
+
+model AutomationRun {
+  id             String           @id @default(uuid())
+  hospitalId     String
+  type           AutomationType
+  eventName      String
+  correlationId  String
+  entityType     String?
+  entityId       String?
+  status         AutomationStatus @default(QUEUED)
+  attempt        Int              @default(0)
+  maxAttempts    Int              @default(5)
+  bullJobId      String?
+  n8nExecutionId String?
+  payload        Json
+  result         Json?
+  error          String?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  nextRetryAt    DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  hospital       Hospital         @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  steps          AutomationStepLog[]
+  @@index([hospitalId, createdAt])
+  @@index([status, createdAt])
+  @@index([correlationId])
+  @@index([entityType, entityId])
+  @@unique([correlationId, eventName])
+}
+
+model AutomationStepLog {
+  id           String           @id @default(uuid())
+  runId        String
+  step         String
+  status       AutomationStatus
+  attempt      Int
+  message      String?
+  metadata     Json?
+  startedAt    DateTime         @default(now())
+  completedAt  DateTime?
+  run          AutomationRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  @@index([runId, startedAt])
+}
+
+model AutomationOutbox {
+  id            String         @id @default(uuid())
+  hospitalId    String
+  type          AutomationType
+  eventName     String
+  correlationId String
+  entityType    String?
+  entityId      String?
+  payload       Json
+  priority      Int            @default(5)
+  delayMs       Int            @default(0)
+  status        OutboxStatus   @default(PENDING)
+  attempts      Int            @default(0)
+  availableAt   DateTime       @default(now())
+  lockedAt      DateTime?
+  processedAt   DateTime?
+  lastError     String?
+  createdAt     DateTime       @default(now())
+  hospital      Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  @@index([status, availableAt])
+  @@index([hospitalId, createdAt])
+  @@unique([correlationId, eventName])
+}
+
+model LabOrder {
+  id           String         @id @default(uuid())
+  hospitalId   String
+  patientId    String
+  displayCode  String
+  testName     String
+  priority     Int            @default(5)
+  status       LabOrderStatus @default(ORDERED)
+  sampleId     String?
+  result       Json?
+  orderedAt    DateTime       @default(now())
+  completedAt  DateTime?
+  hospital     Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient      Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  @@unique([hospitalId, displayCode])
+  @@index([hospitalId, status, priority])
+  @@index([patientId, orderedAt])
+}
+
+model PharmacyOrder {
+  id           String              @id @default(uuid())
+  hospitalId   String
+  patientId    String
+  displayCode  String
+  medication   String
+  dosage       String
+  quantity     Int
+  instructions String
+  status       PharmacyOrderStatus @default(PENDING)
+  validation   Json?
+  orderedAt    DateTime            @default(now())
+  dispensedAt  DateTime?
+  hospital     Hospital            @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient      Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  @@unique([hospitalId, displayCode])
+  @@index([hospitalId, status])
+  @@index([patientId, orderedAt])
+}
+
+model Bed {
+  id           String    @id @default(uuid())
+  hospitalId   String
+  wardId       String
+  code         String
+  type         String
+  status       BedStatus @default(AVAILABLE)
+  hospital     Hospital  @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  ward         Ward      @relation(fields: [wardId], references: [id], onDelete: Cascade)
+  allocations  BedAllocation[]
+  @@unique([hospitalId, code])
+  @@index([hospitalId, status, type])
+  @@index([wardId, status])
+}
+
+model BedAllocation {
+  id          String    @id @default(uuid())
+  bedId       String
+  admissionId String
+  allocatedAt DateTime  @default(now())
+  releasedAt  DateTime?
+  bed         Bed       @relation(fields: [bedId], references: [id], onDelete: Restrict)
+  admission   Admission @relation(fields: [admissionId], references: [id], onDelete: Cascade)
+  @@index([admissionId, releasedAt])
+  @@index([bedId, releasedAt])
+}
+
+model EmergencyCase {
+  id           String          @id @default(uuid())
+  hospitalId   String
+  patientId    String?
+  displayCode  String
+  severity     Int
+  description  String
+  status       EmergencyStatus @default(OPEN)
+  location     String?
+  response     Json?
+  openedAt     DateTime        @default(now())
+  stabilizedAt DateTime?
+  closedAt     DateTime?
+  hospital     Hospital        @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient      Patient?        @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  @@unique([hospitalId, displayCode])
+  @@index([hospitalId, status, severity])
+}
+
+model FollowUp {
+  id          String         @id @default(uuid())
+  hospitalId  String
+  patientId   String
+  reason      String
+  scheduledAt DateTime
+  channel     String
+  status      FollowUpStatus @default(SCHEDULED)
+  sentAt      DateTime?
+  completedAt DateTime?
+  hospital    Hospital       @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  patient     Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  @@index([hospitalId, status, scheduledAt])
+  @@index([patientId, scheduledAt])
+}
+
+model AiInteraction {
+  id           String              @id @default(uuid())
+  hospitalId   String?
+  userId       String
+  feature      AiFeature
+  status       AiInteractionStatus
+  provider     String
+  model        String
+  promptVersion String
+  inputHash    String
+  inputTokens  Int?
+  outputTokens Int?
+  latencyMs    Int
+  errorCode    String?
+  metadata     Json?
+  createdAt    DateTime            @default(now())
+  hospital     Hospital?           @relation(fields: [hospitalId], references: [id], onDelete: SetNull)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([hospitalId, feature, createdAt])
+  @@index([userId, createdAt])
+  @@index([status, createdAt])
+}
+
+model AiConversation {
+  id         String      @id @default(uuid())
+  hospitalId String?
+  userId     String
+  title      String
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  hospital   Hospital?   @relation(fields: [hospitalId], references: [id], onDelete: SetNull)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages   AiMessage[]
+  @@index([userId, updatedAt])
+  @@index([hospitalId, updatedAt])
+}
+
+model AiMessage {
+  id             String        @id @default(uuid())
+  conversationId String
+  role           AiMessageRole
+  content        String        @db.Text
+  createdAt      DateTime      @default(now())
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  @@index([conversationId, createdAt])
+}

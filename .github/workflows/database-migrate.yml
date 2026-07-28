@@ -1,0 +1,42 @@
+name: Deploy Database Migrations
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: production-database-migration
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install migration dependencies
+        run: npm ci --prefix server
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Apply immutable migrations
+        run: npm run db:deploy
+
+      - name: Confirm migration state
+        run: npm run db:status

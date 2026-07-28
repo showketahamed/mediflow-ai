@@ -1,0 +1,17 @@
+{
+  "name": "MediFlow AI Platform",
+  "short_name": "MediFlow",
+  "description": "Secure hospital operations and AI-assisted care coordination.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#020912",
+  "theme_color": "#020912",
+  "icons": [
+    {
+      "src": "/mediflow.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
