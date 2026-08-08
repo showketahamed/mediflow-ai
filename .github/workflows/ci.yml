@@ -66,6 +66,9 @@ jobs:
       - name: Type-check backend
         run: npm run typecheck --prefix server
 
+      - name: Run backend validation tests
+        run: npm run test:api
+
       - name: Build frontend and backend
         run: npm run build:all
 
