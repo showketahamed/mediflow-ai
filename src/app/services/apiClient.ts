@@ -16,8 +16,9 @@ import type {
   AiPredictionResult,
   SessionInfo,
 } from "@/types";
+import { resolveApiUrl } from "./apiUrl";
 
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000/api/v1";
+const API_URL = resolveApiUrl();
 const ACCESS_TOKEN_KEY = "mediflow-access-token";
 let refreshPromise: Promise<string | null> | null = null;
 let csrfToken: string | null = null;
