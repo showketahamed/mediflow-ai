@@ -33,6 +33,13 @@ interface AuthResponse {
   csrfToken?: string;
 }
 
+export class ApiRequestError extends Error {
+  constructor(message: string, public readonly status: number) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 function tokenStorage() {
   return window.localStorage.getItem(ACCESS_TOKEN_KEY) ? window.localStorage : window.sessionStorage;
 }
@@ -56,7 +63,7 @@ export function hasAccessToken() {
 async function parseError(response: Response) {
   const body = await response.json().catch(() => ({})) as ApiErrorBody;
   const message = Array.isArray(body.message) ? body.message.join(" ") : body.message;
-  return new Error(message || `Request failed with status ${response.status}.`);
+  return new ApiRequestError(message || `Request failed with status ${response.status}.`, response.status);
 }
 
 async function ensureCsrfToken() {
