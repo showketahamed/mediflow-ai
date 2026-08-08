@@ -20,6 +20,7 @@ import { resolveApiUrl } from "./apiUrl";
 
 const API_URL = resolveApiUrl();
 const ACCESS_TOKEN_KEY = "mediflow-access-token";
+const REQUEST_TIMEOUT_MS = 20_000;
 let refreshPromise: Promise<string | null> | null = null;
 let csrfToken: string | null = null;
 
@@ -101,6 +102,27 @@ async function refreshAccessToken() {
   return refreshPromise;
 }
 
+async function fetchWithTimeout(url: string, init: RequestInit) {
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, REQUEST_TIMEOUT_MS);
+  const abortFromCaller = () => controller.abort();
+  init.signal?.addEventListener("abort", abortFromCaller, { once: true });
+
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) throw new ApiRequestError("The request timed out. Please try again.", 408);
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+    init.signal?.removeEventListener("abort", abortFromCaller);
+  }
+}
+
 export async function apiRequest<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const token = window.localStorage.getItem(ACCESS_TOKEN_KEY) ?? window.sessionStorage.getItem(ACCESS_TOKEN_KEY);
   const headers = new Headers(init.headers);
@@ -108,7 +130,7 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}, retry 
     headers.set("Content-Type", "application/json");
   }
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(`${API_URL}${path}`, { ...init, headers, credentials: "include" });
+  const response = await fetchWithTimeout(`${API_URL}${path}`, { ...init, headers, credentials: "include" });
   if (response.status === 401 && retry && !path.startsWith("/auth/")) {
     const refreshed = await refreshAccessToken();
     if (refreshed) return apiRequest<T>(path, init, false);

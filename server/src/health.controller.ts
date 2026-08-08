@@ -11,6 +11,21 @@ export class HealthController {
   @Public()
   @Get()
   async check() {
+    return this.readiness();
+  }
+
+  @Public()
+  @Get("live")
+  liveness() {
+    return {
+      status: "ok",
+      timestamp: new Date().toISOString(),
+    };
+  }
+
+  @Public()
+  @Get("ready")
+  async readiness() {
     try {
       await this.prisma.$queryRaw`SELECT 1`;
       return {
