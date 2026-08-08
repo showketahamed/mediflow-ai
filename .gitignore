@@ -1,5 +1,13 @@
 node_modules/
 dist/
+.cache/
+.eslintcache
+.vite/
+.turbo/
+.npm/
+.pnpm-store/
+coverage/
+.nyc_output/
 .env
 .env.*
 !.env.example
@@ -10,6 +18,7 @@ migrate-error.txt
 src/imports/pasted_text/
 server/node_modules/
 server/dist/
+server/.cache/
 server/.env
 server/.env.*
 !server/.env.example
