@@ -1,0 +1,10 @@
+# Keep repository text files portable across Windows, Linux, and CI.
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
